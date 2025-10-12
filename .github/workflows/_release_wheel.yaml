@@ -1,0 +1,52 @@
+name: Build Wheel
+
+on:
+  workflow_call:
+
+jobs:
+  wheel:
+    name: Build Wheel
+    runs-on: ubuntu-latest
+
+    defaults:
+      run:
+        working-directory: './server'
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: "Set up Python"
+        uses: actions/setup-python@v5
+        with:
+          python-version-file: "./server/.python-version"
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v6
+
+      - name: Install the project
+        run: uv sync --locked --all-extras --dev
+
+      - name: Make build dir
+        run: mkdir src/server/build
+
+      - name: Download UI build
+        uses: actions/download-artifact@v5.0.0
+        with:
+          name: build
+          path: server/src/server/build
+
+      - name: Set version from tag
+        if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/')
+        run: |
+          TAG=${GITHUB_REF#refs/tags/}
+          echo "Using tag: $TAG"
+          sed -i "s/^version = .*/version = \"$TAG\"/" pyproject.toml
+
+      - name: Build Wheel
+        run: uv build
+
+      - name: Release Build
+        if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/')
+        uses: softprops/action-gh-release@v1
+        with:
+          files: server/dist/server-*.whl

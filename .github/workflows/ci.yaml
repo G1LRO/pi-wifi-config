@@ -1,0 +1,25 @@
+name: CI
+
+on:
+  push:
+    tags:
+      - "*"
+    branches:
+      - "main"
+  pull_request:
+
+jobs:
+  server_lint:
+    uses: "./.github/workflows/_server_lint.yaml"
+
+  server_schema:
+    needs: [server_lint]
+    uses: "./.github/workflows/_server_schema.yaml"
+
+  ui_lint_build:
+    needs: [server_schema]
+    uses: "./.github/workflows/_ui_lint_build.yaml"
+
+  release_wheel:
+    needs:  [ui_lint_build]
+    uses: "./.github/workflows/_release_wheel.yaml"

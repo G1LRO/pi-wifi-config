@@ -1,0 +1,37 @@
+name: Server Code
+
+on:
+  workflow_call:
+
+jobs:
+  code:
+    name: Schema Artefact
+    runs-on: ubuntu-latest
+
+    defaults:
+      run:
+        working-directory: './server'
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: "Set up Python"
+        uses: actions/setup-python@v5
+        with:
+          python-version-file: "./server/.python-version"
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v6
+
+      - name: Install the project
+        run: uv sync --locked --all-extras --dev
+
+      - name: Print Schema
+        run: |
+          uv run server export-schema > ./schema.json
+
+      - name: Upload Schema Artifact
+        uses: actions/upload-artifact@v4.6.2
+        with:
+          name: schema.json
+          path: ./server/schema.json
