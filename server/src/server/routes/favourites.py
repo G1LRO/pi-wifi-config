@@ -10,7 +10,7 @@ from server.utils.subprocess_runner import run_sudo_command, CommandResult
 FAVOURITES_PATH = Path("/home/rln/favourites.txt")
 DISPLAY_SERVICE = "display_driver.service"
 
-# Default favourites from spec
+# Default favourites from spec - FIXED: Changed line 2 from Parrot to Freestar
 DEFAULT_FAVOURITES = [
     {"name": "Hubnet", "node_number": "41223"},
     {"name": "Freestar", "node_number": "63061"},
@@ -67,7 +67,8 @@ def write_favourites_file(config: FavouritesConfig, node_number: str | None = No
     with open(FAVOURITES_PATH, "w") as f:
         f.write(f"{node_number}\n")
         for item in config.items:
-            f.write(f"{item.name},{item.node_number}\n")
+            # FIXED: Trim whitespace from name and node_number
+            f.write(f"{item.name.strip()},{item.node_number.strip()}\n")
 
 
 def read_favourites_file() -> FavouritesConfig:

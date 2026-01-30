@@ -1,6 +1,6 @@
 import fastapi
 from fastapi.routing import APIRoute
-from pydantic import BaseModel
+from pydantic import BaseModel, field_validator
 
 from server.utils.subprocess_runner import run_sudo_command
 
@@ -21,6 +21,12 @@ class WiFiConfig(BaseModel):
     ssid: str
     password: str
     country: str
+
+    # FIXED: Add validators to trim whitespace
+    @field_validator('ssid', 'password', 'country')
+    @classmethod
+    def trim_whitespace(cls, v: str) -> str:
+        return v.strip()
 
 
 class WiFiStatus(BaseModel):
@@ -83,6 +89,14 @@ def connect_to_wifi(ssid: str, password: str) -> tuple[bool, str]:
     return False, result.stderr
 
 
+def restart_display_service() -> tuple[bool, str]:
+    """Restart the display service after WiFi changes"""
+    result = run_sudo_command(["systemctl", "restart", "display_driver.service"])
+    if result.success:
+        return True, "Display service restarted"
+    return False, result.stderr
+
+
 @router.get("")
 def get_wifi_status() -> WiFiStatus:
     """Get current WiFi connection status"""
@@ -104,10 +118,16 @@ def set_wifi(config: WiFiConfig) -> WiFiResult:
     if not wifi_success:
         errors.append(f"WiFi connection: {wifi_msg}")
 
+    # FIXED: Always restart display service after WiFi update
+    display_success, display_msg = restart_display_service()
+    if not display_success:
+        errors.append(f"Display restart: {display_msg}")
+
     if wifi_success:
+        # FIXED: Updated message to inform user about what's happening
         return WiFiResult(
             success=True,
-            message=f"Connected to {config.ssid}",
+            message=f"Wi-Fi restarting – wait for IP to be displayed on the RLN Z2. Connected to {config.ssid}",
         )
     else:
         return WiFiResult(

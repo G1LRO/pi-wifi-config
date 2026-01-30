@@ -1,5 +1,5 @@
 import fastapi
-from pydantic import BaseModel
+from pydantic import BaseModel, field_validator
 
 from server.routes.wifi import custom_generate_unique_id
 from server.utils.subprocess_runner import run_sudo_command
@@ -13,6 +13,12 @@ class ASLConfig(BaseModel):
     node_password: str
     callsign: str
     login_password: str
+
+    # FIXED: Add validators to trim whitespace
+    @field_validator('node_number', 'node_password', 'callsign', 'login_password')
+    @classmethod
+    def trim_whitespace(cls, v: str) -> str:
+        return v.strip()
 
 
 class ASLStatus(BaseModel):
