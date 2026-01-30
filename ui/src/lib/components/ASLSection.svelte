@@ -54,7 +54,7 @@
 
 		<div>
 			<label for="asl-login-password" class="mb-1 block text-sm font-medium text-gray-700"
-				>Login Password</label
+				>Login and Allmon3 Password</label
 			>
 			<input
 				id="asl-login-password"
