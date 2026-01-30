@@ -25,6 +25,7 @@ from server.routes.asl import (
     restart_allmon3,
     set_rln_user_password,
 )
+from server.utils.subprocess_runner import run_sudo_command
 
 
 router = fastapi.APIRouter(
@@ -59,6 +60,14 @@ class ConfigurationRequest(BaseModel):
 class ConfigurationUpdateResponse(BaseModel):
     success: bool
     results: dict[str, SectionResult]
+
+
+def restart_display_service_helper() -> tuple[bool, str]:
+    """Helper to restart display service and return tuple"""
+    result = run_sudo_command(["systemctl", "restart", "display_driver.service"])
+    if result.success:
+        return True, "Display service restarted"
+    return False, result.stderr
 
 
 @router.get("")
@@ -129,9 +138,16 @@ def update_configuration(request: ConfigurationRequest) -> ConfigurationUpdateRe
             if not wifi_success:
                 errors.append(f"Connection: {wifi_msg}")
 
+            # FIXED: Always restart display service after WiFi update
+            display_success, display_msg = restart_display_service_helper()
+            if not display_success:
+                errors.append(f"Display restart: {display_msg}")
+
             if wifi_success:
+                # FIXED: Updated message to inform user
                 results["wifi"] = SectionResult(
-                    success=True, message=f"Connected to {request.wifi.ssid}"
+                    success=True, 
+                    message=f"Wi-Fi restarting – wait for IP to be displayed on the RLN Z2. Connected to {request.wifi.ssid}"
                 )
             else:
                 results["wifi"] = SectionResult(
