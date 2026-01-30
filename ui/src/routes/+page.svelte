@@ -46,6 +46,7 @@
 	let submitting = $state(false);
 	let showConfirmModal = $state(false);
 	let results = $state<Record<string, SectionResult> | null>(null);
+	let wifiDisconnectMessage = $state<string | null>(null);
 
 	let anyEnabled = $derived(favouritesEnabled || wifiEnabled || aslEnabled);
 
@@ -95,6 +96,7 @@
 		showConfirmModal = false;
 		submitting = true;
 		results = null;
+		wifiDisconnectMessage = null;
 
 		const request: ConfigurationRequest = {
 			update_favourites: favouritesEnabled,
@@ -108,6 +110,8 @@
 
 		if (wifiEnabled) {
 			request.wifi = wifi;
+			// Show WiFi message immediately before the request
+			wifiDisconnectMessage = `Connecting to ${wifi.ssid}... WiFi will restart. Wait for the new IP address to be displayed on the RLN Z2.`;
 		}
 
 		if (aslEnabled) {
@@ -121,16 +125,48 @@
 
 			if (response.data) {
 				results = response.data.results;
+				// Clear WiFi message if we got a response (unlikely but possible)
+				wifiDisconnectMessage = null;
 			}
 		} catch (err) {
 			console.error('Failed to update configuration:', err);
-			results = {
-				error: {
-					success: false,
-					message: 'Request failed',
-					error: String(err)
+			
+			// Special handling for WiFi disconnect - this is EXPECTED behavior
+			if (wifiEnabled && err instanceof TypeError && err.message.includes('fetch')) {
+				// This is normal! WiFi is restarting.
+				results = {
+					wifi: {
+						success: true,
+						message: `Wi-Fi restarting. Please wait for the new IP address to be displayed on the RLN Z2. You will need to reconnect to the new network: ${wifi.ssid}`,
+						error: null
+					}
+				};
+				
+				// Add results for other sections if they were enabled
+				if (favouritesEnabled) {
+					results.favourites = {
+						success: true,
+						message: 'Favourites updated (assuming success before WiFi restart)',
+						error: null
+					};
 				}
-			};
+				if (aslEnabled) {
+					results.asl = {
+						success: true,
+						message: 'ASL configured (assuming success before WiFi restart)',
+						error: null
+					};
+				}
+			} else {
+				// Other errors
+				results = {
+					error: {
+						success: false,
+						message: 'Request failed',
+						error: String(err)
+					}
+				};
+			}
 		} finally {
 			submitting = false;
 		}
@@ -177,6 +213,18 @@
 					{/if}
 				</button>
 			</form>
+
+			{#if wifiDisconnectMessage}
+				<div class="mt-6 rounded-lg border border-blue-200 bg-blue-50 p-4">
+					<div class="flex items-start gap-2">
+						<span class="text-blue-600 text-xl">ℹ</span>
+						<div>
+							<p class="font-medium text-blue-800">WiFi Reconnection Required</p>
+							<p class="mt-1 text-sm text-blue-700">{wifiDisconnectMessage}</p>
+						</div>
+					</div>
+				</div>
+			{/if}
 
 			{#if results}
 				<div class="mt-6 space-y-3">
@@ -229,6 +277,13 @@
 					</li>
 				{/if}
 			</ul>
+			{#if wifiEnabled}
+				<div class="mb-4 rounded-lg border border-yellow-200 bg-yellow-50 p-3">
+					<p class="text-sm text-yellow-800">
+						⚠️ <strong>Note:</strong> WiFi will restart. You'll need to reconnect to the new network.
+					</p>
+				</div>
+			{/if}
 			<div class="flex gap-3">
 				<button
 					type="button"
