@@ -48,14 +48,6 @@ def configure_asl3(node_number: str, callsign: str, password: str) -> tuple[bool
     return False, result.stderr or result.stdout
 
 
-def restart_asterisk() -> tuple[bool, str]:
-    """Restart asterisk service"""
-    result = run_sudo_command(["systemctl", "restart", "asterisk.service"])
-    if result.success:
-        return True, "Asterisk restarted"
-    return False, result.stderr
-
-
 def set_allmon3_password(password: str) -> tuple[bool, str]:
     """Set allmon3 password for rln user"""
     result = run_sudo_command(["allmon3-passwd", "--password", password, "rln"])
@@ -93,7 +85,10 @@ def get_asl_status() -> ASLStatus:
 
 @router.post("")
 def set_asl(config: ASLConfig) -> ASLResult:
-    """Configure ASL: run configure script, restart services, set passwords"""
+    """Configure ASL: run configure script, restart services, set passwords
+    
+    NOTE: Asterisk restart is handled by display_driver.service, not here.
+    """
     errors = []
 
     # Step 1: Run configure-asl3.sh
@@ -103,10 +98,7 @@ def set_asl(config: ASLConfig) -> ASLResult:
     if not success:
         errors.append(f"configure-asl3: {msg}")
 
-    # Step 2: Restart asterisk
-    success, msg = restart_asterisk()
-    if not success:
-        errors.append(f"asterisk restart: {msg}")
+    # REMOVED: Step 2 - Restart asterisk (display_driver.py handles this)
 
     # Step 3: Set allmon3 password
     success, msg = set_allmon3_password(config.login_password)
