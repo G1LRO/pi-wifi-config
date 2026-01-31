@@ -26,6 +26,7 @@ from server.routes.asl import (
     set_rln_user_password,
 )
 from server.utils.subprocess_runner import run_sudo_command
+import time
 
 
 router = fastapi.APIRouter(
@@ -85,6 +86,7 @@ def update_configuration(request: ConfigurationRequest) -> ConfigurationUpdateRe
     """Update selected configuration sections"""
     results: dict[str, SectionResult] = {}
     overall_success = True
+    needs_display_restart = False
 
     # Update favourites if requested
     if request.update_favourites:
@@ -98,18 +100,11 @@ def update_configuration(request: ConfigurationRequest) -> ConfigurationUpdateRe
                 # If ASL is also being updated, use the new node number
                 node_number = request.asl.node_number if request.update_asl and request.asl else None
                 write_favourites_file(request.favourites, node_number)
-                restart_result = restart_display_service()
-                if restart_result.success:
-                    results["favourites"] = SectionResult(
-                        success=True, message="Updated and display service restarted"
-                    )
-                else:
-                    results["favourites"] = SectionResult(
-                        success=False,
-                        message="File saved but service restart failed",
-                        error=restart_result.stderr,
-                    )
-                    overall_success = False
+                # Don't restart display here - we'll do it once at the end
+                needs_display_restart = True
+                results["favourites"] = SectionResult(
+                    success=True, message="Favourites updated"
+                )
             except Exception as e:
                 results["favourites"] = SectionResult(
                     success=False, message="Failed", error=str(e)
@@ -138,13 +133,10 @@ def update_configuration(request: ConfigurationRequest) -> ConfigurationUpdateRe
             if not wifi_success:
                 errors.append(f"Connection: {wifi_msg}")
 
-            # FIXED: Always restart display service after WiFi update
-            display_success, display_msg = restart_display_service_helper()
-            if not display_success:
-                errors.append(f"Display restart: {display_msg}")
+            # Don't restart display here - we'll do it once at the end
+            needs_display_restart = True
 
             if wifi_success:
-                # FIXED: Updated message to inform user
                 results["wifi"] = SectionResult(
                     success=True, 
                     message=f"Wi-Fi restarting – wait for IP to be displayed on the RLN Z2. Connected to {request.wifi.ssid}"
@@ -178,6 +170,9 @@ def update_configuration(request: ConfigurationRequest) -> ConfigurationUpdateRe
             success, msg = restart_asterisk()
             if not success:
                 errors.append(f"asterisk: {msg}")
+            else:
+                # Wait for asterisk to fully restart before continuing
+                time.sleep(3)
 
             # Step 3: Set allmon3 password
             success, msg = set_allmon3_password(request.asl.login_password)
@@ -197,6 +192,7 @@ def update_configuration(request: ConfigurationRequest) -> ConfigurationUpdateRe
             # Step 6: Write node number to favourites file
             try:
                 write_node_number_to_favourites_file(request.asl.node_number)
+                needs_display_restart = True
             except Exception as e:
                 errors.append(f"favourites node number: {str(e)}")
 
@@ -211,5 +207,19 @@ def update_configuration(request: ConfigurationRequest) -> ConfigurationUpdateRe
                     error="; ".join(errors),
                 )
                 overall_success = False
+
+    # FIXED: Restart display service once at the end if needed
+    if needs_display_restart:
+        # If asterisk was restarted, give it extra time to settle
+        if request.update_asl:
+            time.sleep(2)
+        
+        display_success, display_msg = restart_display_service_helper()
+        if not display_success:
+            # Add warning to results but don't fail the whole operation
+            if "wifi" in results:
+                results["wifi"].message += f" (Display restart warning: {display_msg})"
+            elif "favourites" in results:
+                results["favourites"].message += f" (Display restart warning: {display_msg})"
 
     return ConfigurationUpdateResponse(success=overall_success, results=results)
