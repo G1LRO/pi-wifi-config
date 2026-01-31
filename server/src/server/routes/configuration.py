@@ -20,13 +20,11 @@ from server.routes.asl import (
     ASLConfig,
     ASLStatus,
     configure_asl3,
-    restart_asterisk,
     set_allmon3_password,
     restart_allmon3,
     set_rln_user_password,
 )
 from server.utils.subprocess_runner import run_sudo_command
-import time
 
 
 router = fastapi.APIRouter(
@@ -83,7 +81,11 @@ def get_configuration() -> ConfigurationResponse:
 
 @router.post("")
 def update_configuration(request: ConfigurationRequest) -> ConfigurationUpdateResponse:
-    """Update selected configuration sections"""
+    """Update selected configuration sections
+    
+    NOTE: Asterisk restart is handled by display_driver.service when it restarts.
+    We don't restart asterisk directly to avoid conflicts.
+    """
     results: dict[str, SectionResult] = {}
     overall_success = True
     needs_display_restart = False
@@ -166,30 +168,24 @@ def update_configuration(request: ConfigurationRequest) -> ConfigurationUpdateRe
             if not success:
                 errors.append(f"configure-asl3: {msg}")
 
-            # Step 2: Restart asterisk
-            success, msg = restart_asterisk()
-            if not success:
-                errors.append(f"asterisk: {msg}")
-            else:
-                # Wait for asterisk to fully restart before continuing
-                time.sleep(3)
+            # REMOVED: Asterisk restart - display_driver.py handles this
 
-            # Step 3: Set allmon3 password
+            # Step 2: Set allmon3 password
             success, msg = set_allmon3_password(request.asl.login_password)
             if not success:
                 errors.append(f"allmon3 password: {msg}")
 
-            # Step 4: Restart allmon3
+            # Step 3: Restart allmon3
             success, msg = restart_allmon3()
             if not success:
                 errors.append(f"allmon3: {msg}")
 
-            # Step 5: Set rln user password
+            # Step 4: Set rln user password
             success, msg = set_rln_user_password(request.asl.login_password)
             if not success:
                 errors.append(f"user password: {msg}")
 
-            # Step 6: Write node number to favourites file
+            # Step 5: Write node number to favourites file
             try:
                 write_node_number_to_favourites_file(request.asl.node_number)
                 needs_display_restart = True
@@ -209,11 +205,8 @@ def update_configuration(request: ConfigurationRequest) -> ConfigurationUpdateRe
                 overall_success = False
 
     # FIXED: Restart display service once at the end if needed
+    # Display driver will handle asterisk restart, so no waiting needed
     if needs_display_restart:
-        # If asterisk was restarted, give it extra time to settle
-        if request.update_asl:
-            time.sleep(2)
-        
         display_success, display_msg = restart_display_service_helper()
         if not display_success:
             # Add warning to results but don't fail the whole operation
